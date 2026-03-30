@@ -21,7 +21,7 @@ from processing.eye_analyser import EyeAnalyser
 
 APP_TITLE = "SYMBIOTIK System"
 CONFIG_FILE = "config.json"
-DEFAULT_API_URL = "https://localhost/api/cdrm/data"
+DEFAULT_API_URL = "https://symbiotik.aegisresearch.eu/api/cdrm/data"
 
 WINDOW_S = 5.0
 BASELINE_S = 15.0
