@@ -1,6 +1,6 @@
 # Compact Data Representation (CDR)
 
-The CDR module is part of the [SYMBIOTIK](https://symbiotik.2025.2i2.eu/) project. Its purpose is to collect data from physiological sensors at the user's premises, extract features, package them into compact representations, and send them to the SYMBIOTIK system for processing.
+The CDR module is part of the [SYMBIOTIK](https://symbiotik-infovis.eu/) project. Its purpose is to collect data from physiological sensors at the user's premises, extract features, package them into compact representations, and send them to the SYMBIOTIK system for processing.
 
 ## Prerequisites
 
@@ -41,11 +41,11 @@ pip install -r requirements.txt
    python app.py
    ```
 3. A GUI window will appear with further instructions.
-4. Log in to the SYMBIOTIK Dashboard at `https://xxxx.eu/fvt` and create an account if you don't have one.
+4. Log in to the [SYMBIOTIK Dashboard](https://symbiotik.aegisresearch.eu/fvt) and create an account if you don't have one.
 5. Copy your **User ID** from the top-right corner of the Dashboard.
 6. Paste the User ID into the GUI and click **Save ID**.
 7. Click **Start Session**.
 8. Click **Start Baseline**. A popup window with a fixation cross (`+`) will appear. Look at the cross for 15 seconds as indicated by the countdown.
 9. After the baseline completes, the CDR will continuously collect features from both sensors and send them to the SYMBIOTIK system.
-10. Go back to the Dashboard, select one of the 6 predefined view rooms, and interact with the widgets to answer the presented questions.
+10. Go back to the Dashboard, select one of the 6 predefined views, and interact with the widgets to answer the presented question.
 11. If everything is set up correctly, the widgets' UI will adapt in real time based on the cognitive load measured from the sensors.
