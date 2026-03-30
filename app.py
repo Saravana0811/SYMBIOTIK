@@ -10,16 +10,18 @@ from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
+import requests
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from eeg_feature_extractor import EEGFeatureExtractor5s
-from fixation_detection_2d import FixationDetector2D
-from eye_analyser import EyeAnalyser
+from processing.eeg_feature_extractor import EEGFeatureExtractor5s
+from processing.fixation_detection_2d import FixationDetector2D
+from processing.eye_analyser import EyeAnalyser
 
 
-APP_TITLE = "Symbiotic System"
-KEYCLOAK_FILE = "user_keycloak.json"
+APP_TITLE = "SYMBIOTIK System"
+CONFIG_FILE = "config.json"
+DEFAULT_API_URL = "https://localhost/api/cdrm/data"
 
 WINDOW_S = 5.0
 BASELINE_S = 15.0
@@ -53,6 +55,27 @@ def load_json_file(path: Path, default: dict[str, Any]) -> dict[str, Any]:
 
 def save_json_file(path: Path, data: dict[str, Any]) -> None:
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def post_json(url: str, payload: dict[str, Any], timeout: float = 5.0) -> tuple[bool, str]:
+    try:
+        verify = not url.startswith("https://localhost")
+        resp = requests.post(url, json=payload, timeout=timeout, verify=verify)
+        resp.raise_for_status()
+        return True, f"HTTP {resp.status_code}"
+    except requests.HTTPError as exc:
+        return False, f"HTTP {exc.response.status_code}: {exc.response.text.strip()}"
+    except Exception as exc:
+        return False, str(exc)
+
+
+def build_api_payload(data: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "keycloakId": data.get("user_keycloak_id"),
+        "baseline": data.get("baseline"),
+        "eeg": data.get("eeg_features", {}),
+        "eyeTracking": data.get("eye_features", {}),
+    }
 
 
 class EyeFeatureParams:
@@ -376,10 +399,10 @@ class SymbioticSystemApp:
         self.root = root
         self.project_dir = project_dir
         self.root.title(APP_TITLE)
-        self.root.geometry("900x760")
-        self.root.minsize(780, 650)
+        self.root.geometry("900x920")
+        self.root.minsize(780, 850)
 
-        self.keycloak_path = self.project_dir / KEYCLOAK_FILE
+        self.config_path = self.project_dir / CONFIG_FILE
         self.user_keycloak_id: Optional[str] = None
 
         self.eye_reader = SimulatedEyeReader(fs=EYE_FS)
@@ -412,12 +435,39 @@ class SymbioticSystemApp:
         style.configure("Custom.TEntry", padding=6)
 
     def build_ui(self) -> None:
-        main = ttk.Frame(self.root, padding=20)
-        main.pack(fill="both", expand=True)
+        container = ttk.Frame(self.root)
+        container.pack(fill="both", expand=True)
+
+        canvas = tk.Canvas(container, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        main = ttk.Frame(canvas, padding=20)
+        window_id = canvas.create_window((0, 0), window=main, anchor="nw")
+
+        def _on_configure(event: tk.Event) -> None:
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            canvas.itemconfigure(window_id, width=event.width)
+
+        main.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", _on_configure)
+
+        def _on_linux_scroll(event: tk.Event) -> None:
+            if event.num == 4:
+                canvas.yview_scroll(-3, "units")
+            elif event.num == 5:
+                canvas.yview_scroll(3, "units")
+
+        canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1 * (e.delta / 120)), "units"))
+        canvas.bind_all("<Button-4>", _on_linux_scroll)
+        canvas.bind_all("<Button-5>", _on_linux_scroll)
 
         ttk.Label(
             main,
-            text="Welcome to the Symbiotic System",
+            text="Welcome to the SYMBIOTIK System",
             style="Title.TLabel",
         ).pack(pady=(0, 10))
 
@@ -431,16 +481,27 @@ class SymbioticSystemApp:
             justify="center",
         ).pack(pady=(0, 15))
 
+        prereqs = ttk.LabelFrame(main, text="Prerequisites", padding=15)
+        prereqs.pack(fill="x", pady=10)
+
+        prereq_lines = [
+            '1. Navigate to the SYMBIOTIK Dashboard: https://symbiotik.aegisresearch.eu/fvt',
+            '2. Create a new user account if you don\'t have one.',
+            '3. Click the "User ID" button in the top-right corner of the navbar.',
+            '4. Copy your User ID and paste it in the field below.',
+        ]
+        for line in prereq_lines:
+            ttk.Label(prereqs, text=line, style="Body.TLabel").pack(anchor="w", pady=1)
+
         instructions = ttk.LabelFrame(main, text="Instruction Guide", padding=15)
         instructions.pack(fill="x", pady=10)
 
         lines = [
-            "1. Enter your Keycloak ID and save it.",
+            "1. Enter your User ID and click Save ID.",
             "2. Click Start Session.",
             "3. Click Start Baseline.",
-            "4. A fixation cross '+' will appear for 15 seconds.",
-            "5. Baseline features will be printed once.",
-            "6. After that, normal 5-second output continues automatically.",
+            "4. A fixation cross '+' will appear for 15 seconds. Look at it.",
+            "5. After baseline, the system will continuously collect and send features.",
         ]
         for line in lines:
             ttk.Label(instructions, text=line, style="Body.TLabel").pack(anchor="w", pady=1)
@@ -448,7 +509,7 @@ class SymbioticSystemApp:
         user_frame = ttk.LabelFrame(main, text="User ID Entry", padding=15)
         user_frame.pack(fill="x", pady=15)
 
-        ttk.Label(user_frame, text="Enter your Keycloak ID:", style="Header.TLabel").pack(anchor="w", pady=(0, 8))
+        ttk.Label(user_frame, text="Enter your User ID:", style="Header.TLabel").pack(anchor="w", pady=(0, 8))
 
         self.keycloak_entry = ttk.Entry(user_frame, width=42, style="Custom.TEntry")
         self.keycloak_entry.pack(anchor="w", pady=(0, 10))
@@ -518,13 +579,15 @@ class SymbioticSystemApp:
             return
 
         self.user_keycloak_id = entered_id
-        save_json_file(self.keycloak_path, {"user_keycloak_id": entered_id})
+        config = load_json_file(self.config_path, {})
+        config["user_keycloak_id"] = entered_id
+        save_json_file(self.config_path, config)
         self.id_label.config(text=f"Stored Keycloak ID: {entered_id}")
-        self.log(f"Keycloak ID saved locally to {self.keycloak_path.name}")
+        self.log(f"Keycloak ID saved locally to {self.config_path.name}")
         messagebox.showinfo("Success", "Keycloak ID saved successfully.")
 
     def restore_saved_keycloak_id(self) -> None:
-        data = load_json_file(self.keycloak_path, {})
+        data = load_json_file(self.config_path, {})
         saved_id = str(data.get("user_keycloak_id", "")).strip()
 
         if not saved_id:
@@ -592,9 +655,8 @@ class SymbioticSystemApp:
 
         baseline_window = tk.Toplevel(self.root)
         baseline_window.title("Baseline")
-        baseline_window.geometry("600x400")
         baseline_window.configure(bg="white")
-        baseline_window.attributes("-topmost", True)
+        baseline_window.attributes("-topmost", True, "-fullscreen", True)
 
         label = tk.Label(
             baseline_window,
@@ -707,6 +769,13 @@ class SymbioticSystemApp:
                     "eye_features": self.latest_eye_features,
                     "eeg_features": self.latest_eeg_features,
                 }
+
+                api_payload = build_api_payload(combined)
+                ok, detail = post_json(DEFAULT_API_URL, api_payload)
+                if ok:
+                    self.log(f"POST {DEFAULT_API_URL} succeeded ({detail})")
+                else:
+                    self.log(f"[WARN] POST {DEFAULT_API_URL} failed: {detail}")
 
                 print("\n" + "=" * 80)
                 print("NORMAL FEATURE WINDOW")
